@@ -18,7 +18,12 @@ export component AppWindow inherits Window {
     in-out property <int> category-index: 0;
     in-out property <int> preset-index: 0;
     in-out property <int> kind-index: 0;
+    in property <string> file-type-label;
+    in property <string> identifier-hint;
+    in property <string> platform-label;
     in-out property <string> identifier;
+    in-out property <string> application-path;
+    in-out property <bool> adding-application: false;
     in-out property <string> current-name: "未找到默认应用";
     in-out property <string> current-id;
     in-out property <image> current-icon;
@@ -29,6 +34,8 @@ export component AppWindow inherits Window {
     callback preset-selected(int);
     callback lookup(string, int);
     callback apply(string, int, int);
+    callback browse-application();
+    callback add-application(string);
 
     HorizontalLayout {
         spacing: 0;
@@ -42,7 +49,7 @@ export component AppWindow inherits Window {
                 Rectangle { height: 1px; background: #36425a; }
                 Text { text: "应用关联"; color: #dbe5ff; font-size: 14px; font-weight: 600; }
                 Rectangle { vertical-stretch: 1; }
-                Text { text: "macOS  ·  默认应用"; color: #91a0be; font-size: 11px; }
+                Text { text: root.platform-label; color: #91a0be; font-size: 11px; }
             }
         }
         VerticalLayout {
@@ -61,9 +68,22 @@ export component AppWindow inherits Window {
                     }
                     HorizontalLayout {
                         spacing: 8px;
-                        ComboBox { width: 140px; model: ["文件类型 (UTI)", "URL 协议"]; current-index <=> root.kind-index; }
-                        LineEdit { text <=> root.identifier; placeholder-text: "输入 UTI 或 URL 协议"; }
+                        ComboBox { width: 140px; model: [root.file-type-label, "URL 协议", "文件扩展名"]; current-index <=> root.kind-index; }
+                        LineEdit { text <=> root.identifier; placeholder-text: root.kind-index == 2 ? "例如 .foo 或 tar.gz" : root.identifier-hint; accepted => { root.lookup(root.identifier, root.kind-index); } }
                         Button { text: "查询"; clicked => { root.lookup(root.identifier, root.kind-index); } }
+                    }
+                }
+            }
+            Rectangle {
+                background: root.surface; border-radius: 14px;
+                VerticalLayout {
+                    padding: 14px; spacing: 8px;
+                    Text { text: "自定义应用"; color: root.text-primary; font-size: 14px; font-weight: 600; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        LineEdit { text <=> root.application-path; placeholder-text: "输入应用完整路径或点击浏览"; accepted => { root.add-application(root.application-path); } }
+                        Button { text: "浏览…"; enabled: !root.adding-application && !root.busy; clicked => { root.browse-application(); } }
+                        Button { text: "添加"; enabled: !root.adding-application && !root.busy; clicked => { root.add-application(root.application-path); } }
                     }
                 }
             }

@@ -5,6 +5,19 @@
 typedef void (*AppCallback)(void *, const char *, const char *, const char *, const unsigned char *, size_t, bool);
 typedef void (*DoneCallback)(void *, const char *);
 
+static NSString *type_identifier(NSString *raw, int kind) {
+    if (kind != 2) return raw;
+    if (@available(macOS 12.0, *)) {
+        UTType *type = [UTType typeWithFilenameExtension:raw];
+        if (type) return type.identifier;
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    return CFBridgingRelease(UTTypeCreatePreferredIdentifierForTag(
+        kUTTagClassFilenameExtension, (__bridge CFStringRef)raw, NULL));
+#pragma clang diagnostic pop
+}
+
 static void emit_app(NSURL *url, NSString *fallback, BOOL current, void *ctx, AppCallback callback) {
     NSBundle *bundle = url ? [NSBundle bundleWithURL:url] : nil;
     NSString *identifier = bundle.bundleIdentifier ?: fallback ?: @"";
@@ -34,9 +47,11 @@ static void emit_app(NSURL *url, NSString *fallback, BOOL current, void *ctx, Ap
     callback(ctx, identifier.UTF8String, name.UTF8String, (url.path ?: @"").UTF8String, png.bytes, png.length, current);
 }
 
-void dh_lookup(const char *raw, bool scheme, void *ctx, AppCallback callback) {
+void dh_lookup(const char *raw, int kind, void *ctx, AppCallback callback) {
     @autoreleasepool {
-        NSString *identifier = [NSString stringWithUTF8String:raw];
+        NSString *identifier = type_identifier([NSString stringWithUTF8String:raw], kind);
+        if (!identifier.length) return;
+        BOOL scheme = kind == 1;
         NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
         if (@available(macOS 12.0, *)) {
             NSURL *current = nil; NSArray<NSURL *> *apps = @[];
@@ -62,13 +77,37 @@ void dh_lookup(const char *raw, bool scheme, void *ctx, AppCallback callback) {
     }
 }
 
-void dh_set(const char *raw, bool scheme, const char *path, const char *bundle, void *ctx, DoneCallback done) {
+const char *dh_custom(const char *path, void *ctx, AppCallback callback) {
     @autoreleasepool {
-        NSString *identifier = [NSString stringWithUTF8String:raw];
         NSString *appPath = [NSString stringWithUTF8String:path];
+        NSURL *url = [NSURL fileURLWithPath:appPath];
+        NSBundle *bundle = [NSBundle bundleWithURL:url];
+        if (![appPath.pathExtension.lowercaseString isEqualToString:@"app"]
+                || !bundle.bundleIdentifier.length || !bundle.executablePath.length
+                || ![[NSFileManager defaultManager] isExecutableFileAtPath:bundle.executablePath])
+            return "请选择有效的 macOS .app 应用包。";
+        emit_app(url, nil, NO, ctx, callback);
+        return NULL;
+    }
+}
+
+void dh_set(const char *raw, int kind, const char *path, const char *bundle, void *ctx, DoneCallback done) {
+    @autoreleasepool {
+        NSString *identifier = type_identifier([NSString stringWithUTF8String:raw], kind);
+        if (!identifier.length) { done(ctx, "无法识别该文件类型或扩展名。"); return; }
+        BOOL scheme = kind == 1;
+        NSString *appPath = [NSString stringWithUTF8String:path];
+        NSURL *appURL = appPath.length ? [NSURL fileURLWithPath:appPath] : nil;
+        if (!appURL || ![[NSFileManager defaultManager] fileExistsAtPath:appPath]) {
+            done(ctx, "应用已被移除，请重新添加或查询。"); return;
+        }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        OSStatus registration = LSRegisterURL((__bridge CFURLRef)appURL, true);
+#pragma clang diagnostic pop
+        if (registration) { done(ctx, "无法向系统注册此应用。"); return; }
         if (@available(macOS 12.0, *)) {
-            NSURL *url = appPath.length ? [NSURL fileURLWithPath:appPath] : nil;
-            if (!url) { done(ctx, "无法找到应用的位置。"); return; }
+            NSURL *url = appURL;
             void (^completion)(NSError *) = ^(NSError *error) { done(ctx, error ? error.localizedDescription.UTF8String : NULL); };
             if (scheme) [[NSWorkspace sharedWorkspace] setDefaultApplicationAtURL:url toOpenURLsWithScheme:identifier completionHandler:completion];
             else {
