@@ -1,0 +1,109 @@
+import { Button, ComboBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
+
+export struct AppItem { name: string, identifier: string, path: string, icon: image }
+
+export component AppWindow inherits Window {
+    title: "Default Helper";
+    preferred-width: 920px; preferred-height: 720px;
+    min-width: 680px; min-height: 560px;
+    property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    property <color> surface: root.dark ? #202735 : #ffffff;
+    property <color> text-primary: root.dark ? #edf1fa : #26334c;
+    property <color> text-secondary: root.dark ? #aab6ca : #78849a;
+    property <color> text-muted: root.dark ? #a0adc3 : #77849a;
+    background: root.dark ? #131925 : #f4f6fb;
+    in-out property <[string]> categories;
+    in-out property <[string]> presets;
+    in-out property <[AppItem]> applications;
+    in-out property <int> category-index: 0;
+    in-out property <int> preset-index: 0;
+    in-out property <int> kind-index: 0;
+    in-out property <string> identifier;
+    in-out property <string> current-name: "未找到默认应用";
+    in-out property <string> current-id;
+    in-out property <image> current-icon;
+    in-out property <string> status;
+    in-out property <bool> busy: false;
+    in-out property <bool> loading: false;
+    callback category-selected(int);
+    callback preset-selected(int);
+    callback lookup(string, int);
+    callback apply(string, int, int);
+
+    HorizontalLayout {
+        spacing: 0;
+        Rectangle {
+            width: 220px; background: root.dark ? #0c1220 : #17213a;
+            VerticalLayout {
+                padding: 24px; spacing: 16px;
+                Text { text: "✦"; color: #a9bdff; font-size: 32px; }
+                Text { text: "Default\nHelper"; color: white; font-size: 25px; font-weight: 700; }
+                Text { text: "让每一次打开\n都得心应手。"; color: #aab6cf; font-size: 13px; wrap: word-wrap; }
+                Rectangle { height: 1px; background: #36425a; }
+                Text { text: "应用关联"; color: #dbe5ff; font-size: 14px; font-weight: 600; }
+                Rectangle { vertical-stretch: 1; }
+                Text { text: "macOS  ·  默认应用"; color: #91a0be; font-size: 11px; }
+            }
+        }
+        VerticalLayout {
+            padding: 28px; spacing: 14px;
+            Text { text: "默认应用"; font-size: 26px; font-weight: 700; color: root.text-primary; }
+            Text { text: "选择类型，管理打开文件和链接的方式。"; color: root.text-secondary; font-size: 13px; }
+            Rectangle {
+                background: root.surface; border-radius: 14px;
+                VerticalLayout {
+                    padding: 18px; spacing: 10px;
+                    Text { text: "选择类型"; color: root.text-primary; font-size: 14px; font-weight: 600; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ComboBox { width: 150px; model: root.categories; current-index <=> root.category-index; selected(value) => { root.category-selected(self.current-index); } }
+                        ComboBox { model: root.presets; current-index <=> root.preset-index; selected(value) => { root.preset-selected(self.current-index); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ComboBox { width: 140px; model: ["文件类型 (UTI)", "URL 协议"]; current-index <=> root.kind-index; }
+                        LineEdit { text <=> root.identifier; placeholder-text: "输入 UTI 或 URL 协议"; }
+                        Button { text: "查询"; clicked => { root.lookup(root.identifier, root.kind-index); } }
+                    }
+                }
+            }
+            Rectangle {
+                background: root.dark ? #263550 : #e9efff; border-radius: 14px;
+                HorizontalLayout {
+                    padding: 16px; spacing: 14px;
+                    Image { source: root.current-icon; width: 50px; height: 50px; image-fit: contain; }
+                    VerticalLayout {
+                        spacing: 3px;
+                        Text { text: "当前默认应用"; color: root.dark ? #b3c6ed : #6178ad; font-size: 11px; }
+                        Text { text: root.current-name; color: root.dark ? #edf3ff : #23355c; font-size: 16px; font-weight: 700; overflow: elide; }
+                        Text { text: root.current-id; color: root.dark ? #b0bed6 : #71809c; font-size: 11px; overflow: elide; }
+                    }
+                }
+            }
+            HorizontalLayout {
+                Text { text: "可用应用"; color: root.text-primary; font-size: 16px; font-weight: 700; }
+                Text { text: root.applications.length + " 个"; color: root.text-muted; font-size: 12px; horizontal-alignment: right; }
+            }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 7px;
+                    for app[index] in root.applications : Rectangle {
+                        height: 66px; background: root.surface; border-radius: 10px;
+                        HorizontalLayout {
+                            padding-left: 14px; padding-right: 14px; spacing: 12px;
+                            Image { source: app.icon; width: 40px; height: 40px; image-fit: contain; }
+                            VerticalLayout {
+                                alignment: center; spacing: 2px;
+                                Text { text: app.name; color: root.text-primary; font-size: 14px; font-weight: 600; overflow: elide; }
+                                Text { text: app.identifier; color: root.text-muted; font-size: 11px; overflow: elide; }
+                            }
+                            Button { text: "设为默认"; enabled: !root.busy && !root.loading; clicked => { root.apply(root.identifier, root.kind-index, index); } }
+                        }
+                    }
+                }
+            }
+            Text { text: root.status; color: root.text-secondary; font-size: 12px; wrap: word-wrap; }
+        }
+    }
+}

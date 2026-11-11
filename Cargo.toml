@@ -1,0 +1,15 @@
+[package]
+name = "default-helper"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+slint = "1.18.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
+
+[build-dependencies]
+cc = "1"
+slint-build = "1.18.1"
