@@ -199,12 +199,13 @@ const CATEGORIES: &[Category] = &[
             },
         ],
     },
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     Category {
         label: "文件管理器",
         presets: &[Preset {
             label: "打开文件夹（默认文件管理器）",
             identifier: "public.folder",
+            #[cfg(target_os = "linux")]
             mime: "inode/directory",
             kind: 0,
         }],
@@ -713,7 +714,7 @@ mod platform {
         let Ok(id) = CString::new(normalized) else {
             return Err("输入包含无效字符。".into());
         };
-        let mut result = (None, Vec::new());
+        let mut result: (Option<RawApp>, Vec<RawApp>) = (None, Vec::new());
         unsafe {
             dh_lookup(
                 id.as_ptr(),
@@ -721,6 +722,15 @@ mod platform {
                 &mut result as *mut _ as *mut c_void,
                 app_callback,
             );
+        }
+        if let Some(current) = &result.0 {
+            if !result
+                .1
+                .iter()
+                .any(|app| app.identifier == current.identifier)
+            {
+                result.1.push(current.clone());
+            }
         }
         Ok(result)
     }
@@ -817,6 +827,24 @@ mod tests {
     #[test]
     fn rejects_identifier_with_nul() {
         assert!(super::platform::lookup("https\0invalid", 1).is_err());
+    }
+
+    #[test]
+    fn folder_preset_queries_the_system_association() {
+        let preset = super::CATEGORIES
+            .iter()
+            .find(|category| category.label == "文件管理器")
+            .unwrap()
+            .presets
+            .first()
+            .unwrap();
+        assert_eq!(preset.platform_identifier(), "public.folder");
+        assert_eq!(preset.kind, 0);
+        let (current, apps) =
+            super::platform::lookup(preset.platform_identifier(), preset.kind).unwrap();
+        if let Some(current) = current {
+            assert!(apps.iter().any(|app| app.identifier == current.identifier));
+        }
     }
 }
 
