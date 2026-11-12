@@ -311,7 +311,7 @@ mod tests {
             std::os::unix::fs::symlink("/usr/share/mime", root.join("system-data/mime")).unwrap();
             let entry = |name: &str| {
                 format!(
-                "[Desktop Entry]\nType=Application\nName={name}\nExec=/bin/true %u\nMimeType=application/pdf;x-scheme-handler/https;\nNoDisplay=true\n"
+                "[Desktop Entry]\nType=Application\nName={name}\nExec=/bin/true %u\nMimeType=application/pdf;inode/directory;x-scheme-handler/https;\nNoDisplay=true\n"
             )
             };
             let icon = root.join("test icon.svg");
@@ -321,6 +321,7 @@ mod tests {
                 entry("First App"),
             )
             .unwrap();
+            fs::write(root.join("data/applications/file-manager.desktop"), "[Desktop Entry]\nType=Application\nName=File Manager\nExec=/bin/true %F\nCategories=Utility;FileManager;\n").unwrap();
             fs::write(
                 root.join("data/applications/nested/second.desktop"),
                 format!("{}Icon={}\n", entry("Second App"), icon.display()),
@@ -336,15 +337,15 @@ mod tests {
                 format!("{}Hidden=true\n", entry("Hidden User Override")),
             )
             .unwrap();
-            fs::write(root.join("data/applications/mimeinfo.cache"), "[MIME Cache]\napplication/pdf=first.desktop;nested-second.desktop;hidden.desktop;\nx-scheme-handler/https=first.desktop;nested-second.desktop;\n").unwrap();
+            fs::write(root.join("data/applications/mimeinfo.cache"), "[MIME Cache]\napplication/pdf=first.desktop;nested-second.desktop;hidden.desktop;\ninode/directory=first.desktop;nested-second.desktop;\nx-scheme-handler/https=first.desktop;nested-second.desktop;\n").unwrap();
             fs::write(
                 root.join("system-data/applications/mimeinfo.cache"),
                 "[MIME Cache]\napplication/pdf=hidden.desktop;\n",
             )
             .unwrap();
-            fs::write(root.join("config/mimeapps.list"), "# Keep this comment\n[Default Applications]\napplication/pdf=first.desktop;\nx-scheme-handler/https=first.desktop;\ntext/plain=untouched.desktop;\n[Added Associations]\napplication/pdf=first.desktop;nested-second.desktop;\n").unwrap();
+            fs::write(root.join("config/mimeapps.list"), "# Keep this comment\n[Default Applications]\napplication/pdf=first.desktop;\ninode/directory=first.desktop;\nx-scheme-handler/https=first.desktop;\ntext/plain=untouched.desktop;\n[Added Associations]\napplication/pdf=first.desktop;nested-second.desktop;\n").unwrap();
             for component in desktop.split(':').filter(|s| !s.is_empty()) {
-                fs::write(root.join(format!("config/{}-mimeapps.list", component.to_ascii_lowercase())), "# Desktop comment\n[Default Applications]\napplication/pdf=first.desktop;\nx-scheme-handler/https=first.desktop;\ntext/plain=desktop-untouched.desktop;\n").unwrap();
+                fs::write(root.join(format!("config/{}-mimeapps.list", component.to_ascii_lowercase())), "# Desktop comment\n[Default Applications]\napplication/pdf=first.desktop;\ninode/directory=first.desktop;\nx-scheme-handler/https=first.desktop;\ntext/plain=desktop-untouched.desktop;\n").unwrap();
             }
             let output = Command::new(std::env::current_exe().unwrap())
                 .args([
@@ -398,6 +399,24 @@ mod tests {
         assert!(Path::new(&apps[1].path).is_absolute());
         assert!(apps[1].path.ends_with("nested/second.desktop"));
         assert_eq!(apps[1].icon, fs::read(root.join("test icon.svg")).unwrap());
+        let (current, apps) = lookup("inode/directory", 0).unwrap();
+        assert_eq!(current.unwrap().identifier, "first.desktop");
+        assert!(apps
+            .iter()
+            .any(|app| app.identifier == "nested-second.desktop"));
+        assert!(apps
+            .iter()
+            .any(|app| app.identifier == "file-manager.desktop"));
+        set_default_sync("inode/directory", 0, "file-manager.desktop").unwrap();
+        assert_eq!(
+            lookup("inode/directory", 0).unwrap().0.unwrap().identifier,
+            "file-manager.desktop"
+        );
+        set_default_sync("inode/directory", 0, "nested-second.desktop").unwrap();
+        assert_eq!(
+            lookup("inode/directory", 0).unwrap().0.unwrap().identifier,
+            "nested-second.desktop"
+        );
         assert!(set_default_sync("application/pdf", 0, "missing.desktop").is_err());
         assert!(set_default_sync("application/pdf", 0, "../first.desktop").is_err());
         assert!(set_default_sync("application/pdf", 0, "bad\0.desktop").is_err());
@@ -427,6 +446,7 @@ mod tests {
             .unwrap();
             assert!(contents.contains("# Desktop comment"));
             assert!(contents.contains("application/pdf=nested-second.desktop;"));
+            assert!(contents.contains("inode/directory=nested-second.desktop;"));
             assert!(contents.contains("x-scheme-handler/https=nested-second.desktop;"));
             assert!(contents.contains("text/plain=desktop-untouched.desktop;"));
         }

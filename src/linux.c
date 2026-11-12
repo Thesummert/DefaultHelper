@@ -40,6 +40,23 @@ void dh_linux_lookup(const char *mime, void *context, AppCallback callback) {
     for (GList *item = apps; item; item = item->next)
         emit_app(G_APP_INFO(item->data), context, callback, 0, NULL);
     g_list_free_full(apps, g_object_unref);
+
+    // File managers do not always advertise inode/directory in MimeType.
+    // Include visible desktop entries in the standard FileManager category.
+    if (strcmp(mime, "inode/directory") == 0) {
+        apps = g_app_info_get_all();
+        for (GList *item = apps; item; item = item->next) {
+            GAppInfo *app = G_APP_INFO(item->data);
+            if (!G_IS_DESKTOP_APP_INFO(app) || !g_app_info_should_show(app))
+                continue;
+            const char *categories = g_desktop_app_info_get_categories(G_DESKTOP_APP_INFO(app));
+            char **parts = g_strsplit(categories ? categories : "", ";", -1);
+            if (g_strv_contains((const char *const *)parts, "FileManager"))
+                emit_app(app, context, callback, 0, NULL);
+            g_strfreev(parts);
+        }
+        g_list_free_full(apps, g_object_unref);
+    }
 }
 
 char *dh_linux_extension_type(const char *extension) {

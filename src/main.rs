@@ -199,6 +199,16 @@ const CATEGORIES: &[Category] = &[
             },
         ],
     },
+    #[cfg(target_os = "linux")]
+    Category {
+        label: "文件管理器",
+        presets: &[Preset {
+            label: "打开文件夹（默认文件管理器）",
+            identifier: "public.folder",
+            mime: "inode/directory",
+            kind: 0,
+        }],
+    },
     Category {
         label: "链接与协议",
         presets: &[
